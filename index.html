@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chúc mừng Ngày Phụ nữ Việt Nam 20/10</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600&family=Playfair+Display:ital,wght@0,600;1,500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+<style>
+:root{--plum:#2d1b4e;--rose:#ff7eb6;--blush:#ffd6e8;--leaf:#2f5d3a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--plum);font-family:'Playfair Display',Georgia,serif;color:#fff}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#garden{z-index:1}
+#fx{z-index:10;pointer-events:none}
+.hero{position:fixed;z-index:5;left:50%;top:30%;transform:translate(-50%,-50%);text-align:center;width:min(92vw,720px);pointer-events:none}
+.date{margin:0;font-size:clamp(5rem,17vw,11.5rem);line-height:.95;font-weight:600;letter-spacing:.02em;
+  background:linear-gradient(180deg,#fff 20%,var(--blush) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 24px rgba(45,27,78,.55))}
+.title{margin:.1em 0 0;font-family:'Dancing Script','Brush Script MT',cursive;font-size:clamp(1.7rem,5vw,2.8rem);text-shadow:0 2px 14px rgba(45,27,78,.7)}
+.wish{margin:1.1em auto 0;max-width:34ch;font-style:italic;font-size:clamp(1rem,2.4vw,1.25rem);line-height:1.6;
+  text-shadow:0 1px 10px rgba(45,27,78,.8);transition:opacity 1s ease;min-height:3.2em}
+.wish.off{opacity:0}
+.panel{position:fixed;z-index:20;right:18px;bottom:18px;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+#cam{display:none;width:200px;height:150px;object-fit:cover;transform:scaleX(-1);border-radius:16px;border:2px solid rgba(255,255,255,.75);box-shadow:0 8px 28px rgba(45,27,78,.5)}
+.row{display:flex;gap:8px}
+button{font:600 .95rem 'Playfair Display',Georgia,serif;color:#fff;background:rgba(45,27,78,.55);border:1px solid rgba(255,255,255,.55);
+  padding:.6em 1.2em;border-radius:999px;cursor:pointer;backdrop-filter:blur(8px);transition:background .2s}
+button:hover{background:rgba(255,126,182,.55)}
+button:focus-visible{outline:3px solid #ffd24a;outline-offset:2px}
+button.on{background:rgba(255,77,141,.75)}
+.status{font-size:.82rem;max-width:260px;text-align:right;text-shadow:0 1px 6px rgba(45,27,78,.9)}
+@media(max-width:640px){#cam{width:130px;height:98px}}
+</style>
+</head>
+<body>
+<canvas id="garden"></canvas>
+<main class="hero">
+  <h1 class="date">20/10</h1>
+  <p class="title">Chúc mừng Ngày Phụ nữ Việt Nam</p>
+  <p class="wish" id="wish"></p>
+</main>
+<canvas id="fx"></canvas>
+<div class="panel">
+  <video id="cam" playsinline muted></video>
+  <div class="status" id="status" aria-live="polite">Sẵn sàng</div>
+  <div class="row">
+    <button id="btnMode" type="button">Hiệu ứng: Cánh hoa</button>
+    <button id="btnCam" type="button">Bật camera</button>
+  </div>
+</div>
+<script>
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const g = document.getElementById('garden'), gc = g.getContext('2d');
+const fx = document.getElementById('fx'), fc = fx.getContext('2d');
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const TAU = Math.PI * 2;
+const COLORS = [['#ff7eb6','#ffd1e3'],['#ff4d8d','#ffb3cf'],['#ffffff','#ffe3ef'],['#ffb347','#fff0c2'],['#c77dff','#ecd3ff'],['#ff6b6b','#ffc9c9']];
+const GREENS = ['#3a7a47', '#4f9a55', '#6dbb5f'];
+const LAYERS = [{a:.74,b:.80,s:.55,n:34},{a:.80,b:.90,s:.85,n:34},{a:.90,b:1,s:1.25,n:20}];
+let W, H, DPR, bg, layers = [], planted = [], lights = [];
+
+function hill(c, y, amp, col, f, ph) {
+  c.fillStyle = col; c.beginPath(); c.moveTo(0, H);
+  for (let x = 0; x <= W; x += 8) c.lineTo(x, y + Math.sin(x * f + ph) * amp + Math.sin(x * f * 2.3 + ph) * amp * .4);
+  c.lineTo(W, H); c.fill();
+}
+function buildBg() {
+  bg = document.createElement('canvas'); bg.width = W * DPR; bg.height = H * DPR;
+  const c = bg.getContext('2d'); c.scale(DPR, DPR);
+  const s = c.createLinearGradient(0, 0, 0, H);
+  s.addColorStop(0, '#2d1b4e'); s.addColorStop(.45, '#a8407a'); s.addColorStop(.75, '#f4906f'); s.addColorStop(1, '#ffd3a1');
+  c.fillStyle = s; c.fillRect(0, 0, W, H);
+  const r = c.createRadialGradient(W * .5, H * .62, 0, W * .5, H * .62, H * .6);
+  r.addColorStop(0, 'rgba(255,230,180,.85)'); r.addColorStop(1, 'rgba(255,230,180,0)');
+  c.fillStyle = r; c.fillRect(0, 0, W, H);
+  hill(c, H * .62, 22, '#6b4b8a', .018, 0);
+  hill(c, H * .70, 28, '#3f6b4e', .013, 2);
+  hill(c, H * .78, 34, '#2f5d3a', .01, 4);
+}
+function build() {
+  buildBg();
+  layers = LAYERS.map((L, li) => ({
+    s: L.s, li,
+    blades: Array.from({length: Math.round(W / 6)}, () => ({x: rnd(0, W), y: H * rnd(L.a, L.b) + 10 * L.s, h: rnd(14, 40) * L.s, p: rnd(0, TAU)})),
+    fl: Array.from({length: Math.round(L.n * W / 1400) + 8}, () => ({
+      x: rnd(0, W), y: H * rnd(L.a, L.b), h: rnd(.08, .22) * H * L.s, r: rnd(13, 24) * L.s,
+      n: 5 + Math.floor(Math.random() * 5), col: pick(COLORS), rot: rnd(0, TAU), ph: rnd(0, TAU), amp: rnd(4, 10) * L.s
+    })).sort((a, b) => a.y - b.y)
+  }));
+  lights = Array.from({length: 26}, () => ({x: rnd(0, W), y: rnd(H * .45, H * .95), p: rnd(0, TAU), v: rnd(.2, .6)}));
+}
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+  [g, fx].forEach(cv => { cv.width = W * DPR; cv.height = H * DPR; });
+  build();
+}
+addEventListener('resize', resize); resize();
+
+function bloom(c, x, y, r, n, col, open, rot) {
+  c.save(); c.translate(x, y); c.rotate(rot);
+  for (let i = 0; i < n; i++) {
+    c.save(); c.rotate(i * TAU / n);
+    c.fillStyle = col[0]; c.beginPath(); c.ellipse(0, -r * .55, r * .3 * open, r * .55 * open, 0, 0, TAU); c.fill();
+    c.fillStyle = col[1]; c.globalAlpha *= .55; c.beginPath(); c.ellipse(0, -r * .5, r * .13 * open, r * .32 * open, 0, 0, TAU); c.fill();
+    c.restore();
+  }
+  c.fillStyle = '#ffd24a'; c.beginPath(); c.arc(0, 0, r * .2 * open + .5, 0, TAU); c.fill();
+  c.restore();
+}
+function stem(c, x, y, hx, hy, w) {
+  c.strokeStyle = '#3f8a4a'; c.lineWidth = w; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x, (y + hy) / 2, hx, hy); c.stroke();
+  c.fillStyle = '#4f9a55'; c.save(); c.translate((x * 2 + hx) / 3, (y * 2 + hy) / 3); c.rotate(-.7);
+  c.beginPath(); c.ellipse(8 * w / 2, 0, 9 * w / 2, 3 * w / 2, 0, 0, TAU); c.fill(); c.restore();
+}
+
+function drawGarden(t) {
+  gc.setTransform(DPR, 0, 0, DPR, 0, 0); gc.globalAlpha = 1;
+  gc.drawImage(bg, 0, 0, W, H);
+  lights.forEach(l => {
+    const a = .35 + .35 * Math.sin(t * l.v * 2 + l.p), x = l.x + Math.sin(t * l.v + l.p) * 14, y = l.y + Math.cos(t * l.v * .8 + l.p) * 10;
+    gc.fillStyle = 'rgba(255,240,170,' + (a * .25) + ')'; gc.beginPath(); gc.arc(x, y, 7, 0, TAU); gc.fill();
+    gc.fillStyle = 'rgba(255,248,200,' + a + ')'; gc.beginPath(); gc.arc(x, y, 2, 0, TAU); gc.fill();
+  });
+  layers.forEach(L => {
+    gc.strokeStyle = GREENS[L.li]; gc.lineWidth = 1.6 * L.s; gc.lineCap = 'round'; gc.beginPath();
+    L.blades.forEach(b => {
+      const sw = RM ? 0 : Math.sin(t * 1.3 + b.p) * 5 * L.s;
+      gc.moveTo(b.x, b.y); gc.quadraticCurveTo(b.x, b.y - b.h * .5, b.x + sw, b.y - b.h);
+    });
+    gc.stroke();
+    L.fl.forEach(f => {
+      const sw = RM ? 0 : Math.sin(t * 1.1 + f.ph) * f.amp, hx = f.x + sw, hy = f.y - f.h;
+      stem(gc, f.x, f.y, hx, hy, 2.2 * L.s);
+      bloom(gc, hx, hy, f.r, f.n, f.col, 1, f.rot + sw * .02);
+    });
+  });
+  // hoa do người xem gieo
+  for (let i = planted.length - 1; i >= 0; i--) {
+    const p = planted[i], age = t - p.t0;
+    if (age > 25) { planted.splice(i, 1); continue; }
+    const grow = 1 - Math.pow(1 - Math.min(age / 1.6, 1), 3), open = Math.min(Math.max((age - .8) / 1.2, 0), 1);
+    const base = H * .99, hy = base + (p.y - base) * grow, sw = RM ? 0 : Math.sin(t * 1.4 + p.ph) * 6;
+    gc.globalAlpha = age > 22 ? Math.max(0, (25 - age) / 3) : 1;
+    stem(gc, p.x, base, p.x + sw, hy, 3);
+    bloom(gc, p.x + sw, hy, p.r * (.4 + .6 * open), p.n, p.col, open, p.ph);
+    gc.globalAlpha = 1;
+  }
+}
+function plant(x, y) {
+  if (planted.length > 40) planted.shift();
+  planted.push({x, y: Math.min(y, H * .85), t0: performance.now() / 1000, col: pick(COLORS), r: rnd(26, 40), n: 6 + Math.floor(Math.random() * 4), ph: rnd(0, TAU)});
+}
+
+// ---------- hiệu ứng (hạt) ----------
+const MODES = ['Cánh hoa', 'Trái tim', 'Pháo hoa'];
+const SPARK = ['#ff69b4', '#ff1493', '#ffb6c1', '#ffd700', '#ff4d6d', '#ffffff'];
+let mode = 0, parts = [];
+function trail(x, y) {
+  if (mode === 0) parts.push({k: 'petal', x, y, vx: rnd(-1.2, 1.2), vy: rnd(-1.6, -.2), s: rnd(6, 11), col: pick(COLORS)[0], rot: rnd(0, TAU), vr: rnd(-.1, .1), life: 1, d: .008, gr: .035});
+  else if (mode === 1) parts.push({k: 'emoji', c: Math.random() > .3 ? '❤️' : '💖', x, y, vx: rnd(-1, 1), vy: rnd(-2.4, -1), s: rnd(16, 32), life: 1, d: .012, gr: 0});
+  else for (let i = 0; i < 3; i++) { const a = rnd(0, TAU), v = rnd(1, 4); parts.push({k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, s: rnd(2, 4), col: pick(SPARK), life: 1, d: .02, gr: .05}); }
+}
+function burst(x, y) {
+  for (let i = 0; i < 36; i++) { const a = rnd(0, TAU), v = rnd(2, 7); parts.push({k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, s: rnd(2, 4), col: pick(SPARK), life: 1, d: .015, gr: .08}); }
+  for (let i = 0; i < 10; i++) { const a = rnd(0, TAU), v = rnd(1, 4); parts.push({k: 'petal', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, s: rnd(7, 12), col: pick(COLORS)[0], rot: rnd(0, TAU), vr: rnd(-.15, .15), life: 1, d: .008, gr: .05}); }
+}
+let lastAmbient = 0;
+function drawFx(t) {
+  fc.setTransform(DPR, 0, 0, DPR, 0, 0); fc.clearRect(0, 0, W, H);
+  if (!RM && t - lastAmbient > .45) { lastAmbient = t; parts.push({k: 'petal', x: rnd(0, W), y: -10, vx: rnd(-.4, .8), vy: rnd(.6, 1.4), s: rnd(5, 9), col: pick(COLORS)[0], rot: rnd(0, TAU), vr: rnd(-.04, .04), life: 1, d: .0022, gr: 0, amb: true}); }
+  fingers.forEach(p => {
+    const gr = fc.createRadialGradient(p.x, p.y, 0, p.x, p.y, 26);
+    gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(.4, 'rgba(255,126,182,.55)'); gr.addColorStop(1, 'rgba(255,126,182,0)');
+    fc.fillStyle = gr; fc.beginPath(); fc.arc(p.x, p.y, 26, 0, TAU); fc.fill();
+  });
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx + (p.amb ? Math.sin(t * 2 + p.rot) * .5 : 0); p.y += p.vy; p.vy += p.gr; p.life -= p.d;
+    if (p.rot !== undefined) p.rot += p.vr;
+    if (p.life <= 0 || p.y > H + 20) { parts.splice(i, 1); continue; }
+    fc.globalAlpha = Math.min(1, p.life * 1.5);
+    if (p.k === 'emoji') { fc.font = p.s + 'px serif'; fc.textAlign = 'center'; fc.fillText(p.c, p.x, p.y); }
+    else if (p.k === 'petal') { fc.save(); fc.translate(p.x, p.y); fc.rotate(p.rot); fc.fillStyle = p.col; fc.beginPath(); fc.ellipse(0, 0, p.s * .5, p.s, 0, 0, TAU); fc.fill(); fc.restore(); }
+    else { fc.fillStyle = p.col; fc.shadowColor = p.col; fc.shadowBlur = 10; fc.beginPath(); fc.arc(p.x, p.y, p.s, 0, TAU); fc.fill(); fc.shadowBlur = 0; }
+  }
+  fc.globalAlpha = 1;
+  if (parts.length > 700) parts.splice(0, parts.length - 700);
+}
+function loop(ms) { const t = ms / 1000; drawGarden(t); drawFx(t); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+
+// ---------- chuột (khi chưa bật camera) ----------
+addEventListener('pointermove', e => { if (!camOn && !e.target.closest('.panel')) { trail(e.clientX, e.clientY); } });
+addEventListener('pointerdown', e => { if (!camOn && !e.target.closest('.panel')) { plant(e.clientX, e.clientY); burst(e.clientX, e.clientY); } });
+
+// ---------- camera + nhận diện tay ----------
+const video = document.getElementById('cam'), statusEl = document.getElementById('status');
+const btnCam = document.getElementById('btnCam'), btnMode = document.getElementById('btnMode');
+let camOn = false, hands = null, camera = null, fingers = [], lastBurst = 0, lastPlant = [0, 0];
+btnMode.onclick = () => { mode = (mode + 1) % MODES.length; btnMode.textContent = 'Hiệu ứng: ' + MODES[mode]; };
+btnCam.onclick = () => (camOn ? stopCam() : startCam());
+
+async function startCam() {
+  try {
+    statusEl.textContent = 'Đang khởi động nhận diện tay...'; btnCam.classList.add('on');
+    if (!window.Hands || !window.Camera) throw new Error('Không tải được thư viện MediaPipe, hãy kiểm tra mạng');
+    hands = new Hands({locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/' + f});
+    hands.setOptions({maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: .5, minTrackingConfidence: .5});
+    hands.onResults(onHands);
+    video.style.display = 'block';
+    camera = new Camera(video, {onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480});
+    await camera.start();
+    camOn = true; btnCam.textContent = 'Tắt camera'; statusEl.textContent = 'Hãy giơ tay lên trước camera';
+  } catch (err) {
+    console.error(err); stopCam();
+    statusEl.textContent = 'Lỗi: ' + (err.message || err.name) + '. Hãy mở trang bằng https hoặc localhost và cho phép camera.';
+  }
+}
+function stopCam() {
+  if (camera) { try { camera.stop(); } catch (e) {} camera = null; }
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  if (hands) { try { hands.close(); } catch (e) {} hands = null; }
+  video.style.display = 'none'; fingers = []; camOn = false;
+  btnCam.classList.remove('on'); btnCam.textContent = 'Bật camera'; statusEl.textContent = 'Sẵn sàng';
+}
+function openPalm(lm) {
+  const w = lm[0], d = p => Math.hypot(p.x - w.x, p.y - w.y);
+  return [[8, 6], [12, 10], [16, 14], [20, 18]].every(([a, b]) => d(lm[a]) > d(lm[b]) * 1.1);
+}
+function onHands(res) {
+  fingers = [];
+  const list = res.multiHandLandmarks || [];
+  if (!list.length) { statusEl.textContent = 'Chưa thấy bàn tay nào'; return; }
+  statusEl.textContent = 'Đang theo dõi ' + list.length + ' bàn tay';
+  const now = performance.now();
+  list.forEach((lm, hi) => {
+    const pt = i => ({x: (1 - lm[i].x) * W, y: lm[i].y * H});
+    const tip = pt(8); fingers.push(tip); trail(tip.x, tip.y);
+    if (Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) < .045 && now - lastPlant[hi % 2] > 700) {
+      lastPlant[hi % 2] = now; const a = pt(4); plant((a.x + tip.x) / 2, (a.y + tip.y) / 2);
+    } else if (openPalm(lm) && now - lastBurst > 900) {
+      lastBurst = now; [4, 8, 12, 16, 20].forEach(i => { const p = pt(i); burst(p.x, p.y); });
+    }
+  });
+}
+
+// ---------- lời chúc ----------
+const WISHES = [
+  'Chúc những người phụ nữ tuyệt vời luôn rạng rỡ như hoa mùa xuân.',
+  'Chúc bạn luôn khỏe mạnh, bình an và được yêu thương mỗi ngày.',
+  'Cảm ơn vì đã dịu dàng và mạnh mẽ cùng một lúc.',
+  'Mong mọi ước mơ của bạn đều nở hoa.'
+];
+const wishEl = document.getElementById('wish'); let wi = 0;
+wishEl.textContent = WISHES[0];
+if (!RM) setInterval(() => {
+  wishEl.classList.add('off');
+  setTimeout(() => { wi = (wi + 1) % WISHES.length; wishEl.textContent = WISHES[wi]; wishEl.classList.remove('off'); }, 1000);
+}, 5500);
+</script>
+</body>
+</html>
